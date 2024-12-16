@@ -2,8 +2,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { stdin as input } from "process";
-import * as readline from "readline";
+import { stdin as input } from "node:process";
+import * as readline from "node:readline";
 import { extremelySafeConfig, mediumConfig, relaxedConfig } from "./types";
 import clipboardy from "clipboardy";
 import { validateZodSchema } from ".";

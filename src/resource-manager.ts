@@ -1,11 +1,11 @@
-import { Node } from "@babel/types";
-import { ValidationConfig, relaxedConfig } from "./types";
+import type { Node } from "@babel/types";
+import { type ValidationConfig, relaxedConfig } from "./types";
 /**
  * Manages resource usage and enforces limits during validation
  * Tracks node count, execution time, and validates against configured limits
  */
 export class ResourceManager {
-  private nodeCount: number = 0;
+  private nodeCount = 0;
   private startTime: number;
   readonly config: ValidationConfig;
   private lastTimeoutCheck: number = Date.now();
@@ -38,7 +38,7 @@ export class ResourceManager {
     if (elapsed > this.config.timeoutMs) {
       throw new ValidationError(
         `Validation timeout exceeded (${this.config.timeoutMs}ms)`,
-        "Timeout"
+        "Timeout",
       );
     }
   }
@@ -53,7 +53,7 @@ export class ResourceManager {
       // 90% of timeout
       throw new ValidationError(
         `Operation approaching timeout limit`,
-        "Timeout"
+        "Timeout",
       );
     }
   }
@@ -101,7 +101,7 @@ export class ResourceManager {
     if (this.nodeCount > this.config.maxNodeCount) {
       throw new ValidationError(
         `Node count exceeded maximum of ${this.config.maxNodeCount}`,
-        "NodeLimit"
+        "NodeLimit",
       );
     }
   }
@@ -114,7 +114,7 @@ export class ResourceManager {
    */
   public trackDepth(
     depth: number,
-    type: "object" | "chain" | "argument"
+    type: "object" | "chain" | "argument",
   ): void {
     const currentCount = this.depthMap.get(depth) || 0;
     this.depthMap.set(depth, currentCount + 1);
@@ -123,7 +123,7 @@ export class ResourceManager {
     if (depth > maxDepth) {
       throw new ValidationError(
         `${type} nesting depth exceeded maximum of ${maxDepth}`,
-        "DepthLimit"
+        "DepthLimit",
       );
     }
   }
@@ -139,7 +139,7 @@ export class ResourceManager {
     if (size > maxSize) {
       throw new ValidationError(
         `${type} size exceeded maximum of ${maxSize}`,
-        "SizeLimit"
+        "SizeLimit",
       );
     }
   }
@@ -176,7 +176,7 @@ export class ValidationError extends Error {
   constructor(
     message: string,
     public readonly type: ValidationErrorType,
-    public readonly node?: Node
+    public readonly node?: Node,
   ) {
     super(message);
     this.name = "ValidationError";
@@ -219,8 +219,8 @@ export class TimeoutRunner {
         reject(
           new ValidationError(
             `Operation timed out after ${this.timeoutMs}ms`,
-            "Timeout"
-          )
+            "Timeout",
+          ),
         );
       }, this.timeoutMs);
     });
@@ -242,7 +242,7 @@ export class TimeoutRunner {
  * Factory function to create a ResourceManager with optional initial config
  */
 export function createResourceManager(
-  config?: Partial<ValidationConfig>
+  config?: Partial<ValidationConfig>,
 ): ResourceManager {
   return new ResourceManager({
     ...relaxedConfig,

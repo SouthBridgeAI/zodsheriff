@@ -2,15 +2,15 @@ import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 import generate from "@babel/generator";
 import {
-  Node,
-  File,
-  Statement,
-  Expression,
+  type Node,
+  type File,
+  type Statement,
+  type Expression,
   ImportDeclaration,
-  VariableDeclaration,
+  type VariableDeclaration,
   ExportNamedDeclaration,
 } from "@babel/types";
-import { ValidationConfig } from "./types";
+import type { ValidationConfig } from "./types";
 import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
 import { ChainValidator } from "./chain-validator";
@@ -29,19 +29,19 @@ export class SchemaValidator {
   constructor(
     private readonly config: ValidationConfig,
     resourceManager?: ResourceManager,
-    issueReporter?: IssueReporter
+    issueReporter?: IssueReporter,
   ) {
     this.resourceManager = resourceManager ?? new ResourceManager(config);
     this.issueReporter = issueReporter ?? new IssueReporter();
     this.chainValidator = new ChainValidator(
       config,
       this.resourceManager,
-      this.issueReporter
+      this.issueReporter,
     );
     this.argumentValidator = new ArgumentValidator(
       config,
       this.resourceManager,
-      this.issueReporter
+      this.issueReporter,
     );
   }
 
@@ -110,7 +110,7 @@ export class SchemaValidator {
           error instanceof Error ? error.message : "Unknown error"
         }`,
         "File",
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return null;
     }
@@ -138,7 +138,7 @@ export class SchemaValidator {
               path.node,
               `Invalid import from '${path.node.source.value}'. Only 'zod' imports are allowed.`,
               "ImportDeclaration",
-              IssueSeverity.ERROR
+              IssueSeverity.ERROR,
             );
             isValid = false;
             path.remove();
@@ -159,7 +159,7 @@ export class SchemaValidator {
             path.node.declaration.type === "VariableDeclaration"
           ) {
             const validDecl = this.validateVariableDeclaration(
-              path.node.declaration
+              path.node.declaration,
             );
             if (!validDecl) {
               isValid = false;
@@ -175,7 +175,7 @@ export class SchemaValidator {
               path.node,
               `Invalid statement type: ${path.node.type}`,
               path.node.type,
-              IssueSeverity.ERROR
+              IssueSeverity.ERROR,
             );
             isValid = false;
             path.remove();
@@ -197,7 +197,7 @@ export class SchemaValidator {
         node,
         "Schema declarations must use 'const'",
         "VariableDeclaration",
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -209,7 +209,7 @@ export class SchemaValidator {
           declarator,
           "Schema declaration must have an initializer",
           "VariableDeclarator",
-          IssueSeverity.ERROR
+          IssueSeverity.ERROR,
         );
         return false;
       }
@@ -257,7 +257,7 @@ export class SchemaValidator {
         { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
         "Missing 'z' import from 'zod'",
         "File",
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -285,7 +285,7 @@ export class SchemaValidator {
       { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
       `Validation error: ${message}`,
       "File",
-      IssueSeverity.ERROR
+      IssueSeverity.ERROR,
     );
   }
 }
@@ -311,7 +311,7 @@ interface ValidationResult {
  */
 export async function validateSchema(
   schemaCode: string,
-  config: ValidationConfig
+  config: ValidationConfig,
 ): Promise<ValidationResult> {
   const validator = new SchemaValidator(config);
   return validator.validateSchema(schemaCode);

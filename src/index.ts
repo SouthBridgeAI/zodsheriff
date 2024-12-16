@@ -1,6 +1,6 @@
-import { Issue } from "./reporting";
+import type { Issue } from "./reporting";
 import { validateSchema } from "./schema-validator";
-import { createConfig, relaxedConfig, ValidationConfig } from "./types";
+import { createConfig, relaxedConfig, type ValidationConfig } from "./types";
 
 // Core validators and types
 export { SchemaValidator, validateSchema } from "./schema-validator";
@@ -23,7 +23,7 @@ export {
 // Main validation function with default config
 export async function validateZodSchema(
   schemaCode: string,
-  config: Partial<ValidationConfig> = {}
+  config: Partial<ValidationConfig> = {},
 ): Promise<{
   isValid: boolean;
   cleanedCode: string;

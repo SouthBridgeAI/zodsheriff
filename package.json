@@ -12,6 +12,7 @@
   },
   "module": "./dist/index.js",
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@swc/core": "^1.7.26",
     "@types/bun": "^1.1.10",
     "@types/jest": "^29.5.14",

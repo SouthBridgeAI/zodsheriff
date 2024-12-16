@@ -1,4 +1,4 @@
-import { Node } from "@babel/types";
+import type { Node } from "@babel/types";
 
 /**
  * Represents a validation issue found during processing
@@ -36,7 +36,7 @@ export class IssueReporter {
     message: string,
     nodeType: string,
     severity: IssueSeverity = IssueSeverity.ERROR,
-    suggestion?: string
+    suggestion?: string,
   ): void {
     this.issues.push({
       line: node.loc?.start.line ?? -1,
@@ -124,13 +124,13 @@ export function reportIssue(
   node: Node,
   message: string,
   nodeType: string,
-  suggestion?: string
+  suggestion?: string,
 ): void {
   globalIssueReporter.reportIssue(
     node,
     message,
     nodeType,
     IssueSeverity.ERROR,
-    suggestion
+    suggestion,
   );
 }

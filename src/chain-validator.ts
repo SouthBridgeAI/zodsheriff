@@ -1,11 +1,11 @@
-import {
+import type {
   Node,
   CallExpression,
   MemberExpression,
   Identifier,
   Expression,
 } from "@babel/types";
-import { ValidationConfig } from "./types";
+import type { ValidationConfig } from "./types";
 import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
 import { allowedChainMethods, allowedZodMethods } from "./zod-method-names";
@@ -24,7 +24,7 @@ export class ChainValidator {
     private readonly config: ValidationConfig,
     resourceManager?: ResourceManager,
     issueReporter?: IssueReporter,
-    argumentValidator?: ArgumentValidator
+    argumentValidator?: ArgumentValidator,
   ) {
     this.resourceManager = resourceManager ?? new ResourceManager(config);
     this.issueReporter = issueReporter ?? new IssueReporter();
@@ -47,7 +47,7 @@ export class ChainValidator {
           node,
           error.message,
           node.type,
-          IssueSeverity.ERROR
+          IssueSeverity.ERROR,
         );
       }
       return false;
@@ -69,7 +69,7 @@ export class ChainValidator {
         node,
         `Chain nesting depth exceeded maximum of ${this.config.maxChainDepth}`,
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -92,7 +92,7 @@ export class ChainValidator {
       node,
       `Unexpected node type in chain: ${node.type}`,
       node.type,
-      IssueSeverity.ERROR
+      IssueSeverity.ERROR,
     );
     return false;
   }
@@ -115,7 +115,7 @@ export class ChainValidator {
         node,
         "Unable to determine method name",
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -133,14 +133,14 @@ export class ChainValidator {
    */
   private validateMemberExpression(
     node: MemberExpression,
-    depth: number
+    depth: number,
   ): boolean {
     if (node.computed) {
       this.issueReporter.reportIssue(
         node,
         "Computed properties not allowed in chain",
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -156,7 +156,7 @@ export class ChainValidator {
         node.property,
         "Property must be an identifier",
         node.property.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -168,7 +168,7 @@ export class ChainValidator {
         `Method not allowed in chain: ${methodName}`,
         node.type,
         IssueSeverity.ERROR,
-        "Use only allowed Zod methods"
+        "Use only allowed Zod methods",
       );
       return false;
     }
@@ -185,7 +185,7 @@ export class ChainValidator {
         node,
         `Chain must start with 'z', found: ${node.name}`,
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -227,7 +227,7 @@ export class ChainValidator {
    */
   private validateMethodArguments(
     node: CallExpression,
-    methodName: string
+    methodName: string,
   ): boolean {
     return this.argumentValidator.validateMethodArguments(node, methodName);
   }

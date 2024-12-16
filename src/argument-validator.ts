@@ -1,19 +1,19 @@
 import {
-  Node,
-  Expression,
-  CallExpression,
-  ArrowFunctionExpression,
-  FunctionExpression,
-  ArrayExpression,
-  ObjectExpression,
-  StringLiteral,
-  RegExpLiteral,
+  type Node,
+  type Expression,
+  type CallExpression,
+  type ArrowFunctionExpression,
+  type FunctionExpression,
+  type ArrayExpression,
+  type ObjectExpression,
+  type StringLiteral,
+  type RegExpLiteral,
   isCallExpression,
   isMemberExpression,
-  Identifier,
+  type Identifier,
 } from "@babel/types";
 import { allowedZodMethods, allowedChainMethods } from "./zod-method-names";
-import { ValidationConfig } from "./types";
+import type { ValidationConfig } from "./types";
 import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
 import { validateObjectExpression } from "./object-validator";
@@ -30,7 +30,7 @@ export class ArgumentValidator {
   constructor(
     private readonly config: ValidationConfig,
     resourceManager?: ResourceManager,
-    issueReporter?: IssueReporter
+    issueReporter?: IssueReporter,
   ) {
     this.resourceManager = resourceManager ?? new ResourceManager(config);
     this.issueReporter = issueReporter ?? new IssueReporter();
@@ -82,7 +82,7 @@ export class ArgumentValidator {
    */
   public validateMethodArguments(
     node: CallExpression,
-    methodName: string
+    methodName: string,
   ): boolean {
     const rules = ArgumentValidator.METHOD_RULES[methodName];
     if (!rules) {
@@ -97,7 +97,7 @@ export class ArgumentValidator {
 
       // Validate each argument
       return node.arguments.every((arg, index) =>
-        this.validateArgument(arg, rules, methodName, index)
+        this.validateArgument(arg, rules, methodName, index),
       );
     } catch (error) {
       if (error instanceof Error) {
@@ -105,7 +105,7 @@ export class ArgumentValidator {
           node,
           error.message,
           node.type,
-          IssueSeverity.ERROR
+          IssueSeverity.ERROR,
         );
       }
       return false;
@@ -119,7 +119,7 @@ export class ArgumentValidator {
     arg: Node,
     rules: ArgumentRule,
     methodName: string,
-    index: number
+    index: number,
   ): boolean {
     this.resourceManager.incrementNodeCount();
 
@@ -131,7 +131,7 @@ export class ArgumentValidator {
         arg,
         `The first argument to ${methodName} must be a function`,
         arg.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -192,7 +192,7 @@ export class ArgumentValidator {
       arg,
       `Unexpected argument type for method ${methodName}: ${arg.type}`,
       arg.type,
-      IssueSeverity.ERROR
+      IssueSeverity.ERROR,
     );
     return false;
   }
@@ -202,14 +202,14 @@ export class ArgumentValidator {
    */
   private validateFunctionArgument(
     node: ArrowFunctionExpression | FunctionExpression,
-    rules: ArgumentRule
+    rules: ArgumentRule,
   ): boolean {
     if (!rules.allowFunction) {
       this.issueReporter.reportIssue(
         node,
         "Function arguments not allowed for this method",
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -225,7 +225,7 @@ export class ArgumentValidator {
    * Validates function bodies for safety
    */
   private validateFunctionBody(
-    node: ArrowFunctionExpression | FunctionExpression
+    node: ArrowFunctionExpression | FunctionExpression,
   ): boolean {
     // Don't allow async functions
     if (node.async) {
@@ -233,7 +233,7 @@ export class ArgumentValidator {
         node,
         "Async functions not allowed in schema validation",
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -244,7 +244,7 @@ export class ArgumentValidator {
         node,
         "Generator functions not allowed in schema validation",
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -271,7 +271,7 @@ export class ArgumentValidator {
         node,
         `Array exceeds maximum size of ${this.config.maxPropertiesPerObject}`,
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -283,7 +283,7 @@ export class ArgumentValidator {
         element,
         { allowFunction: false, allowSchema: false },
         "array",
-        0
+        0,
       );
     });
   }
@@ -315,7 +315,7 @@ export class ArgumentValidator {
           node,
           "Regex pattern too long",
           node.type,
-          IssueSeverity.ERROR
+          IssueSeverity.ERROR,
         );
         return false;
       }
@@ -325,7 +325,7 @@ export class ArgumentValidator {
           node,
           "Regex pattern is not safe (as reported by safe-regex)",
           node.type,
-          IssueSeverity.ERROR
+          IssueSeverity.ERROR,
         );
         return false;
       }
@@ -350,7 +350,7 @@ export class ArgumentValidator {
    */
   private validateArgumentCount(
     node: CallExpression,
-    rules: ArgumentRule
+    rules: ArgumentRule,
   ): boolean {
     const { minArgs, maxArgs } = rules;
     const argCount = node.arguments.length;
@@ -360,7 +360,7 @@ export class ArgumentValidator {
         node,
         `Too few arguments. Expected at least ${minArgs}, got ${argCount}`,
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -370,7 +370,7 @@ export class ArgumentValidator {
         node,
         `Too many arguments. Expected at most ${maxArgs}, got ${argCount}`,
         node.type,
-        IssueSeverity.ERROR
+        IssueSeverity.ERROR,
       );
       return false;
     }
@@ -393,7 +393,7 @@ interface ArgumentRule {
 
 // Type guards
 function isFunction(
-  node: Node
+  node: Node,
 ): node is ArrowFunctionExpression | FunctionExpression {
   return (
     node.type === "ArrowFunctionExpression" ||

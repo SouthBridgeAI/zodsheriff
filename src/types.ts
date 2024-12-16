@@ -126,7 +126,7 @@ export const relaxedConfig: ValidationConfig = {
 // Helper to combine configs with overrides
 export function createConfig(
   baseConfig: ValidationConfig,
-  overrides?: Partial<ValidationConfig>
+  overrides?: Partial<ValidationConfig>,
 ): ValidationConfig {
   return {
     ...baseConfig,

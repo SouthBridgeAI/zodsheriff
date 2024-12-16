@@ -1,4 +1,4 @@
-import {
+import type {
   Node,
   ObjectExpression,
   ObjectProperty,
@@ -6,8 +6,8 @@ import {
   Identifier,
   StringLiteral,
 } from "@babel/types";
-import { ValidationConfig } from "./types";
-import { Issue, IssueSeverity } from "./reporting";
+import type { ValidationConfig } from "./types";
+import { type Issue, IssueSeverity } from "./reporting";
 
 /**
  * Result of validating a node, including any issues found
@@ -37,7 +37,7 @@ export function validateObjectExpression(
   obj: ObjectExpression,
   depth: number,
   config: ValidationConfig,
-  parentNodes: Node[] = []
+  parentNodes: Node[] = [],
 ): ValidationResult {
   // Check cache first
   const cached = validationCache.get(obj);
@@ -85,7 +85,7 @@ export function validateObjectExpression(
           prop.value,
           depth + 1,
           config,
-          [...parentNodes, obj]
+          [...parentNodes, obj],
         );
         if (!nestedResult.isValid) {
           issues.push(...nestedResult.issues);
@@ -126,7 +126,7 @@ export function validateObjectExpression(
 function validateProperty(
   prop: ObjectProperty | ObjectMethod,
   config: ValidationConfig,
-  parentNodes: Node[]
+  parentNodes: Node[],
 ): ValidationResult {
   const issues: Issue[] = [];
 
@@ -174,7 +174,7 @@ function validateProperty(
  */
 function validatePropertyName(
   key: Node,
-  config: ValidationConfig
+  config: ValidationConfig,
 ): ValidationResult {
   // Only handle identifier and string literal keys
   if (!isIdentifier(key) && !isStringLiteral(key)) {
@@ -289,7 +289,7 @@ function isStringLiteral(node: Node): node is StringLiteral {
 function cacheAndReturn(
   obj: ObjectExpression, // Add obj parameter
   config: ValidationConfig, // Add config parameter
-  result: ValidationResult
+  result: ValidationResult,
 ): ValidationResult {
   if (config.enableCaching) {
     validationCache.set(obj, result);
