@@ -1,6 +1,6 @@
 import { parse } from "@babel/parser";
-import traverse from "@babel/traverse";
-import generate from "@babel/generator";
+import _traverse from "@babel/traverse";
+import _generate from "@babel/generator";
 import {
   type Node,
   type File,
@@ -15,6 +15,10 @@ import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
 import { ChainValidator } from "./chain-validator";
 import { ArgumentValidator } from "./argument-validator";
+
+// Handle ESM default export
+const traverse = (_traverse as any).default || _traverse;
+const generate = (_generate as any).default || _generate;
 
 /**
  * SchemaValidator class
@@ -31,19 +35,19 @@ export class SchemaValidator {
   constructor(
     private readonly config: ValidationConfig,
     resourceManager?: ResourceManager,
-    issueReporter?: IssueReporter,
+    issueReporter?: IssueReporter
   ) {
     this.resourceManager = resourceManager ?? new ResourceManager(config);
     this.issueReporter = issueReporter ?? new IssueReporter();
     this.chainValidator = new ChainValidator(
       config,
       this.resourceManager,
-      this.issueReporter,
+      this.issueReporter
     );
     this.argumentValidator = new ArgumentValidator(
       config,
       this.resourceManager,
-      this.issueReporter,
+      this.issueReporter
     );
   }
 
@@ -99,7 +103,7 @@ export class SchemaValidator {
               path.node,
               `Invalid import from '${path.node.source.value}'. Only 'zod' imports are allowed.`,
               "ImportDeclaration",
-              IssueSeverity.ERROR,
+              IssueSeverity.ERROR
             );
             nodesToRemove.add(path.node);
             hasErrors = true;
@@ -115,7 +119,7 @@ export class SchemaValidator {
           } else {
             // Check if this contains any schema declarations
             const hasSchema = path.node.declarations.some((decl) =>
-              this.isSchemaDeclaration(decl),
+              this.isSchemaDeclaration(decl)
             );
             if (hasSchema) {
               hasValidSchemas = true;
@@ -139,7 +143,7 @@ export class SchemaValidator {
               path.node,
               `Invalid statement type: ${path.node.type}`,
               path.node.type,
-              IssueSeverity.ERROR,
+              IssueSeverity.ERROR
             );
             nodesToRemove.add(path.node);
             hasErrors = true;
@@ -211,7 +215,7 @@ export class SchemaValidator {
         { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
         "Missing 'z' import from 'zod'",
         "File",
-        IssueSeverity.ERROR,
+        IssueSeverity.ERROR
       );
     }
 
@@ -236,7 +240,7 @@ export class SchemaValidator {
         node,
         "Schema declarations must use 'const'",
         "VariableDeclaration",
-        IssueSeverity.ERROR,
+        IssueSeverity.ERROR
       );
       return false;
     }
@@ -249,7 +253,7 @@ export class SchemaValidator {
           declarator,
           "Schema declaration must have an initializer",
           "VariableDeclarator",
-          IssueSeverity.ERROR,
+          IssueSeverity.ERROR
         );
         isValid = false;
         continue;
@@ -264,7 +268,7 @@ export class SchemaValidator {
           declarator,
           "Schema declaration must have an initializer",
           "VariableDeclarator",
-          IssueSeverity.ERROR,
+          IssueSeverity.ERROR
         );
         isValid = false;
         continue;
@@ -332,7 +336,7 @@ export class SchemaValidator {
           error instanceof Error ? error.message : "Unknown error"
         }`,
         "File",
-        IssueSeverity.ERROR,
+        IssueSeverity.ERROR
       );
       return null;
     }
@@ -376,7 +380,7 @@ export class SchemaValidator {
       { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
       `Validation error: ${message}`,
       "File",
-      IssueSeverity.ERROR,
+      IssueSeverity.ERROR
     );
   }
 }
@@ -409,7 +413,7 @@ interface ValidationResult {
  */
 export async function validateSchema(
   schemaCode: string,
-  config: ValidationConfig,
+  config: ValidationConfig
 ): Promise<ValidationResult> {
   const validator = new SchemaValidator(config);
   return validator.validateSchema(schemaCode);
