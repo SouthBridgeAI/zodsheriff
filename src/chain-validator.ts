@@ -62,6 +62,18 @@ export class ChainValidator {
    */
   private validateChainNode(node: Node, depth: number): boolean {
     this.resourceManager.incrementNodeCount();
+
+    // Enforce chain depth here if you want to fail gracefully instead of throwing
+    if (depth > this.config.maxChainDepth) {
+      this.issueReporter.reportIssue(
+        node,
+        `Chain nesting depth exceeded maximum of ${this.config.maxChainDepth}`,
+        node.type,
+        IssueSeverity.ERROR
+      );
+      return false;
+    }
+
     this.resourceManager.trackDepth(depth, "chain");
 
     if (isIdentifier(node)) {
@@ -207,7 +219,7 @@ export class ChainValidator {
    */
   private requiresArgumentValidation(methodName: string): boolean {
     // Add methods that need argument validation
-    return ["refine", "transform", "pipe"].includes(methodName);
+    return ["refine", "transform", "pipe", "object"].includes(methodName);
   }
 
   /**

@@ -7,7 +7,7 @@ import { ValidationConfig, relaxedConfig } from "./types";
 export class ResourceManager {
   private nodeCount: number = 0;
   private startTime: number;
-  private readonly config: ValidationConfig;
+  readonly config: ValidationConfig;
   private lastTimeoutCheck: number = Date.now();
   private readonly CHECK_INTERVAL_MS = 100; // Check every 100ms
 

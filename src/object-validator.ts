@@ -48,7 +48,7 @@ export function validateObjectExpression(
   const issues: Issue[] = [];
 
   // Check depth
-  if (depth > config.maxObjectDepth) {
+  if (depth >= config.maxObjectDepth) {
     issues.push({
       line: obj.loc?.start.line ?? -1,
       column: obj.loc?.start.column,
@@ -73,7 +73,33 @@ export function validateObjectExpression(
 
   // Validate each property
   for (const prop of obj.properties) {
-    if (prop.type === "SpreadElement") {
+    if (prop.type === "ObjectProperty") {
+      const propResult = validateProperty(prop, config, [...parentNodes, obj]);
+      if (!propResult.isValid) {
+        issues.push(...propResult.issues);
+        return cacheAndReturn(obj, config, { isValid: false, issues });
+      }
+      // Check if the property value is also an object
+      if (prop.value && prop.value.type === "ObjectExpression") {
+        const nestedResult = validateObjectExpression(
+          prop.value,
+          depth + 1,
+          config,
+          [...parentNodes, obj]
+        );
+        if (!nestedResult.isValid) {
+          issues.push(...nestedResult.issues);
+          return cacheAndReturn(obj, config, { isValid: false, issues });
+        }
+      }
+    } else if (prop.type === "ObjectMethod") {
+      const propResult = validateProperty(prop, config, [...parentNodes, obj]);
+      if (!propResult.isValid) {
+        issues.push(...propResult.issues);
+        return cacheAndReturn(obj, config, { isValid: false, issues });
+      }
+    } else if (prop.type === "SpreadElement") {
+      // Already handled above
       issues.push({
         line: prop.loc?.start.line ?? -1,
         column: prop.loc?.start.column,
@@ -82,14 +108,6 @@ export function validateObjectExpression(
         nodeType: "SpreadElement",
       });
       return cacheAndReturn(obj, config, { isValid: false, issues });
-    }
-
-    if (isObjectProperty(prop) || isObjectMethod(prop)) {
-      const propResult = validateProperty(prop, config, [...parentNodes, obj]);
-      if (!propResult.isValid) {
-        issues.push(...propResult.issues);
-        return cacheAndReturn(obj, config, { isValid: false, issues });
-      }
     }
   }
 
@@ -176,6 +194,21 @@ function validatePropertyName(
 
   const name = isIdentifier(key) ? key.name : key.value;
   const { propertySafety } = config;
+
+  if (name === "__proto__") {
+    return {
+      isValid: false,
+      issues: [
+        {
+          line: key.loc?.start.line ?? -1,
+          column: key.loc?.start.column,
+          message: `Property name '${name}' is not allowed`,
+          severity: IssueSeverity.ERROR,
+          nodeType: key.type,
+        },
+      ],
+    };
+  }
 
   // Check against denied properties
   if (propertySafety.deniedProperties.has(name)) {

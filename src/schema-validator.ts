@@ -204,7 +204,7 @@ export class SchemaValidator {
 
     // Validate each declarator
     return node.declarations.every((declarator) => {
-      if (!declarator.init) {
+      if (!declarator.init || declarator.init.type !== "CallExpression") {
         this.issueReporter.reportIssue(
           declarator,
           "Schema declaration must have an initializer",
@@ -236,15 +236,21 @@ export class SchemaValidator {
    * Checks for valid zod import
    */
   private validateZodImport(ast: File): boolean {
-    const hasZodImport = ast.program.body.some(
-      (node) =>
-        node.type === "ImportDeclaration" &&
-        node.source.value === "zod" &&
-        node.specifiers.some(
-          (spec) =>
-            spec.type === "ImportDefaultSpecifier" && spec.local.name === "z"
-        )
-    );
+    const hasZodImport = ast.program.body.some((node) => {
+      if (node.type !== "ImportDeclaration") return false;
+      if (node.source.value !== "zod") return false;
+
+      // Check if there's either a default import named 'z' or a named import '{ z }'
+      return node.specifiers.some((spec) => {
+        // ImportDefaultSpecifier means: import z from 'zod'
+        // ImportSpecifier means: import { z } from 'zod'
+        return (
+          (spec.type === "ImportDefaultSpecifier" ||
+            spec.type === "ImportSpecifier") &&
+          spec.local.name === "z"
+        );
+      });
+    });
 
     if (!hasZodImport) {
       this.issueReporter.reportIssue(

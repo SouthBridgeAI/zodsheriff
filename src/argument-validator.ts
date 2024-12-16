@@ -8,8 +8,11 @@ import {
   ObjectExpression,
   StringLiteral,
   RegExpLiteral,
+  isCallExpression,
+  isMemberExpression,
   Identifier,
 } from "@babel/types";
+import { allowedZodMethods, allowedChainMethods } from "./zod-method-names";
 import { ValidationConfig } from "./types";
 import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
@@ -65,6 +68,12 @@ export class ArgumentValidator {
       allowSchema: false,
       validateRegex: true,
     },
+    object: {
+      minArgs: 1,
+      maxArgs: 1,
+      allowFunction: false,
+      allowSchema: false,
+    },
     // Add more method rules as needed
   };
 
@@ -114,12 +123,32 @@ export class ArgumentValidator {
   ): boolean {
     this.resourceManager.incrementNodeCount();
 
+    // If the method requires the first argument to be a function
+    // (e.g., refine or transform), and it's not a function,
+    // return false immediately.
+    if (methodName === "refine" && index === 0 && !isFunction(arg)) {
+      this.issueReporter.reportIssue(
+        arg,
+        `The first argument to ${methodName} must be a function`,
+        arg.type,
+        IssueSeverity.ERROR
+      );
+      return false;
+    }
+
     // Handle different argument types
     if (isFunction(arg)) {
       return this.validateFunctionArgument(arg, rules);
     }
 
     if (isObjectExpression(arg)) {
+      // If this method does not allow objects (unless explicitly stated),
+      // and we got an object when a function was expected, fail.
+      // For `refine`, only the second argument (options) might be an object.
+      // If index is 0 and we are here, we already handled above. If index > 0, you may allow.
+      if (methodName === "refine" && index === 0) {
+        return false;
+      }
       return validateObjectExpression(arg, 0, this.config, []).isValid;
     }
 
@@ -133,6 +162,29 @@ export class ArgumentValidator {
 
     if (isIdentifier(arg)) {
       return this.validateIdentifierArgument(arg);
+    }
+
+    if (isCallExpression(arg)) {
+      const callee = arg.callee;
+      if (
+        isMemberExpression(callee) &&
+        isIdentifier(callee.object) &&
+        callee.object.name === "z"
+      ) {
+        if (isIdentifier(callee.property)) {
+          const methodName = callee.property.name;
+          if (
+            allowedZodMethods.has(methodName) ||
+            allowedChainMethods.has(methodName)
+          ) {
+            return true;
+          }
+        } else {
+          return false;
+        }
+      } else if (isIdentifier(callee) && callee.name === "z") {
+        return true;
+      }
     }
 
     // Unknown argument type
