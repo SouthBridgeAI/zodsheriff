@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import * as fs from "fs";
 import * as path from "path";
 import { stdin as input } from "node:process";
@@ -75,7 +73,7 @@ async function main() {
       const val = args[i + 1];
       if (!val || !["extremelySafe", "medium", "relaxed"].includes(val)) {
         console.error(
-          "Invalid config value. Must be one of: extremelySafe, medium, relaxed"
+          "Invalid config value. Must be one of: extremelySafe, medium, relaxed",
         );
         process.exit(1);
       }
@@ -114,7 +112,7 @@ async function main() {
     schemaCode = fs.readFileSync(path.resolve(inputFilePath), "utf8");
   } else {
     console.error(
-      "No input specified. Use --stdin, --clipboard, or provide a file path."
+      "No input specified. Use --stdin, --clipboard, or provide a file path.",
     );
     process.exit(1);
   }
@@ -136,7 +134,7 @@ async function main() {
 
   if (options.cleanOnly) {
     // If user wants clean-only, we print only cleaned schema if valid, else nothing
-    if (result.isValid) {
+    if (result.cleanedCode) {
       process.stdout.write(result.cleanedCode);
     } else {
       // no output if invalid, just errors to stderr
@@ -155,8 +153,6 @@ async function main() {
   if (isTTY) {
     if (result.isValid) {
       console.log("✅ Validation passed.");
-      console.log("Cleaned schema:");
-      console.log(result.cleanedCode);
     } else {
       console.log("❌ Validation failed.");
       console.log("Issues:");
@@ -164,13 +160,17 @@ async function main() {
         console.log(
           `- ${issue.severity.toUpperCase()}: ${issue.message} (at line ${
             issue.line
-          }, node: ${issue.nodeType})`
+          }, node: ${issue.nodeType})`,
         );
       }
     }
+    if (result.cleanedCode) {
+      console.log("Cleaned schema:");
+      console.log(result.cleanedCode);
+    }
   } else {
     // Non-TTY, no --json or --clean-only, just output the cleaned schema if valid, else full object
-    if (result.isValid) {
+    if (result.cleanedCode) {
       process.stdout.write(result.cleanedCode);
     } else {
       process.stdout.write(JSON.stringify(result, null, 2));

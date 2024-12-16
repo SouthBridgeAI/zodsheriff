@@ -6,9 +6,9 @@ import {
   type File,
   type Statement,
   type Expression,
-  ImportDeclaration,
   type VariableDeclaration,
-  ExportNamedDeclaration,
+  type VariableDeclarator,
+  exportNamedDeclaration,
 } from "@babel/types";
 import type { ValidationConfig } from "./types";
 import { ResourceManager } from "./resource-manager";
@@ -17,8 +17,10 @@ import { ChainValidator } from "./chain-validator";
 import { ArgumentValidator } from "./argument-validator";
 
 /**
- * Main validator for Zod schemas
- * Coordinates all other validators and handles the overall validation process
+ * SchemaValidator class
+ * Main class responsible for validating Zod schema definitions.
+ * Coordinates validation of imports, schema structure, and method chains
+ * while enforcing configured safety limits.
  */
 export class SchemaValidator {
   private readonly resourceManager: ResourceManager;
@@ -46,9 +48,23 @@ export class SchemaValidator {
   }
 
   /**
-   * Validates and transforms a schema code string
-   * @param schemaCode - The input schema code to validate
-   * @returns Object containing cleaned code and any issues found
+   * Main schema validation method
+   *
+   * Process:
+   * 1. Parses input code to AST
+   * 2. Validates imports
+   * 3. Processes and validates declarations
+   * 4. Removes invalid nodes
+   * 5. Auto-exports valid schemas
+   * 6. Generates cleaned output
+   *
+   * Notes:
+   * - Returns isValid: false if any errors are found
+   * - Still returns cleaned code containing valid schemas
+   * - Reports all validation issues found
+   *
+   * @param schemaCode - The schema code to validate
+   * @returns Promise<ValidationResult> with validation status, cleaned code, and issues
    */
   public async validateSchema(schemaCode: string): Promise<ValidationResult> {
     this.resourceManager.reset();
@@ -65,12 +81,84 @@ export class SchemaValidator {
         };
       }
 
-      // Validate the schema
-      const isValid = await this.validateAst(ast);
+      let hasValidSchemas = false;
+      let hasErrors = false;
+      const nodesToRemove = new Set<Node>();
 
-      // Generate cleaned code if valid
+      // First check for required zod import
+      const hasZodImport = this.validateZodImport(ast);
+      if (!hasZodImport) {
+        hasErrors = true;
+      }
+
+      // Traverse and validate the AST
+      traverse(ast, {
+        ImportDeclaration: (path) => {
+          if (path.node.source.value !== "zod") {
+            this.issueReporter.reportIssue(
+              path.node,
+              `Invalid import from '${path.node.source.value}'. Only 'zod' imports are allowed.`,
+              "ImportDeclaration",
+              IssueSeverity.ERROR,
+            );
+            nodesToRemove.add(path.node);
+            hasErrors = true;
+          }
+        },
+
+        VariableDeclaration: (path) => {
+          const isValid = this.validateVariableDeclaration(path.node);
+
+          if (!isValid) {
+            nodesToRemove.add(path.node);
+            hasErrors = true;
+          } else {
+            // Check if this contains any schema declarations
+            const hasSchema = path.node.declarations.some((decl) =>
+              this.isSchemaDeclaration(decl),
+            );
+            if (hasSchema) {
+              hasValidSchemas = true;
+              // If it's valid and not already exported, wrap it in an export
+              if (
+                !path.parent ||
+                path.parent.type !== "ExportNamedDeclaration"
+              ) {
+                const exportDecl = exportNamedDeclaration(path.node, []);
+                path.replaceWith(exportDecl);
+              }
+            } else {
+              nodesToRemove.add(path.node);
+            }
+          }
+        },
+
+        Statement: (path) => {
+          if (!this.isAllowedStatement(path.node)) {
+            this.issueReporter.reportIssue(
+              path.node,
+              `Invalid statement type: ${path.node.type}`,
+              path.node.type,
+              IssueSeverity.ERROR,
+            );
+            nodesToRemove.add(path.node);
+            hasErrors = true;
+          }
+        },
+      });
+
+      // Remove invalid nodes
+      traverse(ast, {
+        enter(path) {
+          if (nodesToRemove.has(path.node)) {
+            path.remove();
+          }
+        },
+      });
+
+      // Generate cleaned code if we found any valid schemas
       let cleanedCode = "";
-      if (isValid) {
+      if (hasValidSchemas) {
         const generated = generate(ast, {
           comments: true,
           compact: false,
@@ -79,7 +167,7 @@ export class SchemaValidator {
       }
 
       return {
-        isValid,
+        isValid: !hasErrors,
         cleanedCode,
         issues: this.issueReporter.getIssues(),
       };
@@ -94,7 +182,141 @@ export class SchemaValidator {
   }
 
   /**
+   * Validates that the code properly imports 'z' from 'zod'
+   *
+   * Checks for:
+   * - Presence of zod import
+   * - Correct import specifier ('z')
+   * - No other imports from other modules
+   *
+   * @param ast - The AST to validate
+   * @returns boolean indicating if import is valid
+   */
+  private validateZodImport(ast: File): boolean {
+    const hasZodImport = ast.program.body.some((node) => {
+      if (node.type !== "ImportDeclaration") return false;
+      if (node.source.value !== "zod") return false;
+
+      return node.specifiers.some((spec) => {
+        return (
+          (spec.type === "ImportDefaultSpecifier" ||
+            spec.type === "ImportSpecifier") &&
+          spec.local.name === "z"
+        );
+      });
+    });
+
+    if (!hasZodImport) {
+      this.issueReporter.reportIssue(
+        { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
+        "Missing 'z' import from 'zod'",
+        "File",
+        IssueSeverity.ERROR,
+      );
+    }
+
+    return hasZodImport;
+  }
+
+  /**
+   * Validates a variable declaration node to ensure it meets schema requirements
+   *
+   * Validates that:
+   * - Declaration uses 'const'
+   * - Has a proper initializer (not undefined or missing)
+   * - Schema initialization is valid
+   *
+   * @param node - The variable declaration to validate
+   * @returns boolean indicating if the declaration is valid
+   */
+  private validateVariableDeclaration(node: VariableDeclaration): boolean {
+    // Only allow const declarations
+    if (node.kind !== "const") {
+      this.issueReporter.reportIssue(
+        node,
+        "Schema declarations must use 'const'",
+        "VariableDeclaration",
+        IssueSeverity.ERROR,
+      );
+      return false;
+    }
+
+    let isValid = true;
+    for (const declarator of node.declarations) {
+      // Check for missing initializer
+      if (!declarator.init) {
+        this.issueReporter.reportIssue(
+          declarator,
+          "Schema declaration must have an initializer",
+          "VariableDeclarator",
+          IssueSeverity.ERROR,
+        );
+        isValid = false;
+        continue;
+      }
+
+      // Check for undefined initializer
+      if (
+        declarator.init.type === "Identifier" &&
+        declarator.init.name === "undefined"
+      ) {
+        this.issueReporter.reportIssue(
+          declarator,
+          "Schema declaration must have an initializer",
+          "VariableDeclarator",
+          IssueSeverity.ERROR,
+        );
+        isValid = false;
+        continue;
+      }
+
+      // For schema declarations, validate the initialization
+      if (this.isSchemaDeclaration(declarator)) {
+        if (!this.validateSchemaExpression(declarator.init)) {
+          isValid = false;
+        }
+      }
+    }
+
+    return isValid;
+  }
+
+  /**
+   * Determines if a variable declarator represents a schema declaration
+   *
+   * Checks:
+   * - Variable name (contains 'schema')
+   * - Initialization pattern (z.* or schema-like call expression)
+   *
+   * @param declarator - The variable declarator to check
+   * @returns boolean indicating if this is a schema declaration
+   */
+  private isSchemaDeclaration(declarator: VariableDeclarator): boolean {
+    if (!declarator.init) return false;
+
+    // Check for explicit schema naming
+    if (
+      declarator.id.type === "Identifier" &&
+      declarator.id.name.toLowerCase().includes("schema")
+    ) {
+      return true;
+    }
+
+    // Check initialization pattern
+    const init = declarator.init;
+    return (
+      init.type === "CallExpression" ||
+      (init.type === "MemberExpression" &&
+        init.object.type === "Identifier" &&
+        init.object.name === "z")
+    );
+  }
+
+  /**
    * Parses input code into an AST
+   *
+   * @param code - The code to parse
+   * @returns Promise<File | null> The parsed AST or null if parsing fails
    */
   private async parseCode(code: string): Promise<File | null> {
     try {
@@ -117,167 +339,36 @@ export class SchemaValidator {
   }
 
   /**
-   * Validates the entire AST
-   */
-  private async validateAst(ast: File): Promise<boolean> {
-    return this.resourceManager.withTimeoutCheck(async () => {
-      let isValid = true;
-
-      // Check for zod import
-      const hasZodImport = this.validateZodImport(ast);
-      if (!hasZodImport) {
-        isValid = false;
-      }
-
-      // Traverse and validate the AST
-      traverse(ast, {
-        ImportDeclaration: (path) => {
-          // Only allow zod import
-          if (path.node.source.value !== "zod") {
-            this.issueReporter.reportIssue(
-              path.node,
-              `Invalid import from '${path.node.source.value}'. Only 'zod' imports are allowed.`,
-              "ImportDeclaration",
-              IssueSeverity.ERROR,
-            );
-            isValid = false;
-            path.remove();
-          }
-        },
-
-        VariableDeclaration: (path) => {
-          const validDecl = this.validateVariableDeclaration(path.node);
-          if (!validDecl) {
-            isValid = false;
-            path.remove();
-          }
-        },
-
-        ExportNamedDeclaration: (path) => {
-          if (
-            path.node.declaration &&
-            path.node.declaration.type === "VariableDeclaration"
-          ) {
-            const validDecl = this.validateVariableDeclaration(
-              path.node.declaration,
-            );
-            if (!validDecl) {
-              isValid = false;
-              path.remove();
-            }
-          }
-        },
-
-        // Remove any other statements
-        Statement: (path) => {
-          if (!this.isAllowedStatement(path.node)) {
-            this.issueReporter.reportIssue(
-              path.node,
-              `Invalid statement type: ${path.node.type}`,
-              path.node.type,
-              IssueSeverity.ERROR,
-            );
-            isValid = false;
-            path.remove();
-          }
-        },
-      });
-
-      return isValid;
-    });
-  }
-
-  /**
-   * Validates a variable declaration containing a schema
-   */
-  private validateVariableDeclaration(node: VariableDeclaration): boolean {
-    // Only allow const declarations
-    if (node.kind !== "const") {
-      this.issueReporter.reportIssue(
-        node,
-        "Schema declarations must use 'const'",
-        "VariableDeclaration",
-        IssueSeverity.ERROR,
-      );
-      return false;
-    }
-
-    // Validate each declarator
-    return node.declarations.every((declarator) => {
-      if (!declarator.init || declarator.init.type !== "CallExpression") {
-        this.issueReporter.reportIssue(
-          declarator,
-          "Schema declaration must have an initializer",
-          "VariableDeclarator",
-          IssueSeverity.ERROR,
-        );
-        return false;
-      }
-
-      return this.validateSchemaExpression(declarator.init);
-    });
-  }
-
-  /**
    * Validates a schema expression
+   * Currently delegates to chain validator for method chain validation
+   *
+   * @param node - The expression to validate
+   * @returns boolean indicating if the expression is valid
    */
   private validateSchemaExpression(node: Expression): boolean {
-    // Validate the chain structure
-    if (!this.chainValidator.validateChain(node)) {
-      return false;
-    }
-
-    // Additional schema-specific validations could go here
-
-    return true;
+    return this.chainValidator.validateChain(node);
   }
 
   /**
-   * Checks for valid zod import
-   */
-  private validateZodImport(ast: File): boolean {
-    const hasZodImport = ast.program.body.some((node) => {
-      if (node.type !== "ImportDeclaration") return false;
-      if (node.source.value !== "zod") return false;
-
-      // Check if there's either a default import named 'z' or a named import '{ z }'
-      return node.specifiers.some((spec) => {
-        // ImportDefaultSpecifier means: import z from 'zod'
-        // ImportSpecifier means: import { z } from 'zod'
-        return (
-          (spec.type === "ImportDefaultSpecifier" ||
-            spec.type === "ImportSpecifier") &&
-          spec.local.name === "z"
-        );
-      });
-    });
-
-    if (!hasZodImport) {
-      this.issueReporter.reportIssue(
-        { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
-        "Missing 'z' import from 'zod'",
-        "File",
-        IssueSeverity.ERROR,
-      );
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Checks if a statement type is allowed
+   * Checks if a statement type is allowed in schema definitions
+   *
+   * @param node - The statement to check
+   * @returns boolean indicating if the statement type is allowed
    */
   private isAllowedStatement(node: Statement): boolean {
     return (
       node.type === "ImportDeclaration" ||
       node.type === "ExportNamedDeclaration" ||
-      node.type === "VariableDeclaration"
+      node.type === "VariableDeclaration" ||
+      node.type === "ExportDefaultDeclaration"
     );
   }
 
   /**
    * Handles errors during validation
+   * Converts errors to validation issues
+   *
+   * @param error - The error to handle
    */
   private handleError(error: unknown): void {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -294,8 +385,11 @@ export class SchemaValidator {
  * Result of schema validation
  */
 interface ValidationResult {
+  /** Whether the schema is valid (no errors found) */
   isValid: boolean;
+  /** The cleaned and formatted schema code */
   cleanedCode: string;
+  /** Array of validation issues found */
   issues: Array<{
     line: number;
     column?: number;
@@ -308,6 +402,10 @@ interface ValidationResult {
 
 /**
  * Convenience function to validate a schema
+ *
+ * @param schemaCode - The schema code to validate
+ * @param config - The validation configuration to use
+ * @returns Promise<ValidationResult>
  */
 export async function validateSchema(
   schemaCode: string,
