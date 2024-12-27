@@ -1,6 +1,6 @@
 {
   "name": "zodsheriff",
-  "version": "0.0.2",
+  "version": "0.0.5",
   "author": "Hrishi Olickel <twitter-@hrishioa> (https://olickel.com)",
   "repository": {
     "type": "git",
@@ -8,7 +8,7 @@
   },
   "main": "./dist/index.cjs",
   "bin": {
-    "zodsheriff": "./dist/run.js"
+    "zodsheriff": "dist/run.js"
   },
   "module": "./dist/index.js",
   "devDependencies": {
