@@ -107,6 +107,14 @@ export class SchemaDependencyAnalyzer {
     }
   }
 
+  public getDependencies(name: string): SchemaDependencyInfo | undefined {
+    return this.dependencies.get(name);
+  }
+
+  public getReferenceMap(): Map<string, Set<string>> {
+    return this.referenceMap;
+  }
+
   /**
    * Finds groups of interconnected schemas that can be treated
    * as independent units.
@@ -176,30 +184,69 @@ export class SchemaDependencyAnalyzer {
    * @returns Combined schema code with proper ordering
    */
   public generateCombinedSchema(group: Set<string>): string {
-    const orderedSchemas: string[] = [];
-    const added = new Set<string>();
+    // Find the root schema (the one that depends on others but isn't depended on)
+    const rootSchema =
+      Array.from(group).find((name) => {
+        const deps = this.dependencies.get(name)!.dependencies;
+        const refs = this.referenceMap.get(name) || new Set();
+        return deps.size > 0 && refs.size === 0;
+      }) || Array.from(group)[0];
 
-    // Add schemas in dependency order
-    const addSchema = (name: string) => {
-      if (added.has(name)) return;
-
+    // Create a map of schema AST nodes for easy lookup
+    const schemaMap = new Map<string, Node>();
+    group.forEach((name) => {
       const info = this.dependencies.get(name);
-      if (!info) return;
+      if (info) {
+        schemaMap.set(name, info.node);
+      }
+    });
 
-      // Add dependencies first
-      info.dependencies.forEach((dep) => {
-        if (group.has(dep)) {
-          addSchema(dep);
+    // Clone the root schema AST to avoid modifying the original
+    const rootNode = this.dependencies.get(rootSchema)?.node;
+    if (!rootNode || rootNode.type !== "VariableDeclarator" || !rootNode.init) {
+      return "";
+    }
+
+    // Function to recursively replace schema references with their definitions
+    const replaceSchemaReferences = (node: Node): Node => {
+      if (node.type === "Identifier" && schemaMap.has(node.name)) {
+        // Get the schema definition for this reference
+        const schemaNode = schemaMap.get(node.name);
+        if (
+          schemaNode &&
+          schemaNode.type === "VariableDeclarator" &&
+          schemaNode.init
+        ) {
+          // Return the schema definition (the part after the =)
+          return replaceSchemaReferences(schemaNode.init);
+        }
+      }
+
+      // Deep clone the node to avoid modifying original
+      const clonedNode = { ...node };
+
+      // Recursively process all properties that might contain nodes
+      Object.keys(clonedNode).forEach((key) => {
+        const child = (clonedNode as any)[key];
+
+        if (Array.isArray(child)) {
+          (clonedNode as any)[key] = child.map((item) =>
+            item && typeof item === "object" && "type" in item
+              ? replaceSchemaReferences(item)
+              : item
+          );
+        } else if (child && typeof child === "object" && "type" in child) {
+          (clonedNode as any)[key] = replaceSchemaReferences(child);
         }
       });
 
-      orderedSchemas.push(info.code);
-      added.add(name);
+      return clonedNode;
     };
 
-    // Process each schema in the group
-    group.forEach((name) => addSchema(name));
+    // Replace all schema references in the root schema
+    const inlinedSchema = replaceSchemaReferences(rootNode.init);
 
-    return orderedSchemas.join("\n\n");
+    // Generate code from the transformed AST
+    return generate(inlinedSchema).code;
   }
 }

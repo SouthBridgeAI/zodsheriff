@@ -229,9 +229,25 @@ export class SchemaValidator {
 
       const groups = analyzer.getIndependentSchemaGroups();
       const schemaGroups = groups.map((group) => {
+        // Find the root schema name using the same logic
+        const rootSchema =
+          Array.from(group).find((name) => {
+            const deps = analyzer.getDependencies(name)!.dependencies;
+            const refs = analyzer.getReferenceMap().get(name) || new Set();
+            return deps.size > 0 && refs.size === 0;
+          }) || Array.from(group)[0];
+
+        // Reorder group to put root schema first
+        const orderedNames = [rootSchema];
+        group.forEach((name) => {
+          if (name !== rootSchema) {
+            orderedNames.push(name);
+          }
+        });
+
         const code = analyzer.generateCombinedSchema(group);
         return {
-          schemaNames: Array.from(group),
+          schemaNames: orderedNames,
           code,
           metrics: calculateGroupMetrics(code, group.size),
         };
