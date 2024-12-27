@@ -180,11 +180,7 @@ export class SchemaValidator {
 
       // 4) If unification is enabled, parse the *cleaned* code & unify
       let schemaGroups: SchemaGroup[] | undefined;
-      if (
-        hasValidSchemas &&
-        !hasErrors &&
-        this.config.schemaUnification?.enabled
-      ) {
+      if (hasValidSchemas && this.config.schemaUnification?.enabled) {
         // Re-parse the cleaned code
         const cleanedAst = await this.parseCode(cleanedCode);
         if (cleanedAst) {
