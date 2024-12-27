@@ -39,7 +39,7 @@ export class SchemaValidator {
   private readonly chainValidator: ChainValidator;
   private readonly argumentValidator: ArgumentValidator;
   // NEW: track root-level schema names here
-  private rootSchemaNames: string[] = [];
+  private rootSchemaNames: Set<string> = new Set();
 
   constructor(
     private readonly config: ValidationConfig,
@@ -83,6 +83,7 @@ export class SchemaValidator {
     schemaCode: string,
     options: SchemaGroupingOptions = { enabled: false }
   ): Promise<ValidationResult> {
+    this.rootSchemaNames.clear();
     this.resourceManager.reset();
     this.issueReporter.clear();
 
@@ -94,7 +95,7 @@ export class SchemaValidator {
           isValid: false,
           cleanedCode: "",
           issues: this.issueReporter.getIssues(),
-          rootSchemaNames: this.rootSchemaNames,
+          rootSchemaNames: Array.from(this.rootSchemaNames),
         };
       }
 
@@ -193,7 +194,7 @@ export class SchemaValidator {
         isValid: !hasErrors,
         cleanedCode,
         issues: this.issueReporter.getIssues(),
-        rootSchemaNames: this.rootSchemaNames,
+        rootSchemaNames: Array.from(this.rootSchemaNames),
         schemaGroups,
       };
     } catch (error) {
@@ -202,7 +203,7 @@ export class SchemaValidator {
         isValid: false,
         cleanedCode: "",
         issues: this.issueReporter.getIssues(),
-        rootSchemaNames: this.rootSchemaNames,
+        rootSchemaNames: Array.from(this.rootSchemaNames),
       };
     }
   }
@@ -346,7 +347,7 @@ export class SchemaValidator {
         } else {
           // If it's valid, record the name of the variable as a root schema
           if (declarator.id.type === "Identifier") {
-            this.rootSchemaNames.push(declarator.id.name);
+            this.rootSchemaNames.add(declarator.id.name);
           }
         }
       }

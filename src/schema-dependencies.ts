@@ -1,7 +1,12 @@
 // schema-dependencies.ts
 
 import { Node, VariableDeclarator, Identifier } from "@babel/types";
-import traverse from "@babel/traverse";
+import _traverse from "@babel/traverse";
+import _generate from "@babel/generator";
+
+// Handle ESM default export
+const traverse = (_traverse as any).default || _traverse;
+const generate = (_generate as any).default || _generate;
 
 /**
  * Information about a schema and its dependencies.
@@ -34,26 +39,27 @@ export class SchemaDependencyAnalyzer {
    * @param ast - The AST to analyze
    */
   public analyzeDependencies(ast: Node): void {
-    traverse(ast, {
-      VariableDeclarator: (path) => {
-        if (path.node.id.type === "Identifier") {
-          const schemaName = path.node.id.name;
+    const visitor = {
+      VariableDeclarator: (node: VariableDeclarator) => {
+        if (node.id.type === "Identifier") {
+          const schemaName = node.id.name;
           const deps = new Set<string>();
 
-          // Track all schema references within this declaration
-          path.traverse({
-            Identifier: (innerPath) => {
-              const name = innerPath.node.name;
-              if (name !== schemaName && this.dependencies.has(name)) {
-                deps.add(name);
-              }
-            },
+          // Track all identifiers within this declaration
+          this.visitNode(node.init, (n) => {
+            if (
+              n.type === "Identifier" &&
+              n.name !== schemaName &&
+              this.dependencies.has(n.name)
+            ) {
+              deps.add(n.name);
+            }
           });
 
           this.dependencies.set(schemaName, {
             dependencies: deps,
-            code: path.getSource(),
-            node: path.node,
+            code: generate(node).code,
+            node: node,
           });
 
           // Update reverse reference mapping
@@ -65,7 +71,40 @@ export class SchemaDependencyAnalyzer {
           });
         }
       },
+    };
+
+    this.visitNode(ast, (node) => {
+      if (node.type === "VariableDeclarator") {
+        visitor.VariableDeclarator(node);
+      }
     });
+  }
+
+  /**
+   * Recursively visits all nodes in the AST
+   */
+  private visitNode(
+    node: Node | null | undefined,
+    visitor: (node: Node) => void
+  ): void {
+    if (!node) return;
+
+    visitor(node);
+
+    // Visit all properties that might contain nodes
+    for (const key of Object.keys(node)) {
+      const child = (node as any)[key];
+
+      if (Array.isArray(child)) {
+        child.forEach((item) => {
+          if (item && typeof item === "object" && "type" in item) {
+            this.visitNode(item, visitor);
+          }
+        });
+      } else if (child && typeof child === "object" && "type" in child) {
+        this.visitNode(child, visitor);
+      }
+    }
   }
 
   /**
