@@ -23,11 +23,12 @@ export {
 // Main validation function with default config
 export async function validateZodSchema(
   schemaCode: string,
-  config: Partial<ValidationConfig> = {},
+  config: Partial<ValidationConfig> = {}
 ): Promise<{
   isValid: boolean;
   cleanedCode: string;
   issues: Array<Issue>;
+  rootSchemaNames: string[];
 }> {
   const finalConfig = createConfig(relaxedConfig, config);
   return validateSchema(schemaCode, finalConfig);

@@ -15,6 +15,13 @@ import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
 import { ChainValidator } from "./chain-validator";
 import { ArgumentValidator } from "./argument-validator";
+import {
+  calculateGroupMetrics,
+  SchemaGroup,
+  SchemaGroupingOptions,
+  sortSchemaGroups,
+} from "./schema-groups";
+import { SchemaDependencyAnalyzer } from "./schema-dependencies";
 
 // Handle ESM default export
 const traverse = (_traverse as any).default || _traverse;
@@ -31,6 +38,8 @@ export class SchemaValidator {
   private readonly issueReporter: IssueReporter;
   private readonly chainValidator: ChainValidator;
   private readonly argumentValidator: ArgumentValidator;
+  // NEW: track root-level schema names here
+  private rootSchemaNames: string[] = [];
 
   constructor(
     private readonly config: ValidationConfig,
@@ -70,7 +79,10 @@ export class SchemaValidator {
    * @param schemaCode - The schema code to validate
    * @returns Promise<ValidationResult> with validation status, cleaned code, and issues
    */
-  public async validateSchema(schemaCode: string): Promise<ValidationResult> {
+  public async validateSchema(
+    schemaCode: string,
+    options: SchemaGroupingOptions = { enabled: false }
+  ): Promise<ValidationResult> {
     this.resourceManager.reset();
     this.issueReporter.clear();
 
@@ -82,6 +94,7 @@ export class SchemaValidator {
           isValid: false,
           cleanedCode: "",
           issues: this.issueReporter.getIssues(),
+          rootSchemaNames: this.rootSchemaNames,
         };
       }
 
@@ -170,10 +183,18 @@ export class SchemaValidator {
         cleanedCode = generated.code;
       }
 
+      // Only attempt grouping if validation passed and it was requested
+      const schemaGroups =
+        options.enabled && hasValidSchemas && !hasErrors
+          ? await this.generateSchemaGroups(ast)
+          : undefined;
+
       return {
         isValid: !hasErrors,
         cleanedCode,
         issues: this.issueReporter.getIssues(),
+        rootSchemaNames: this.rootSchemaNames,
+        schemaGroups,
       };
     } catch (error) {
       this.handleError(error);
@@ -181,7 +202,51 @@ export class SchemaValidator {
         isValid: false,
         cleanedCode: "",
         issues: this.issueReporter.getIssues(),
+        rootSchemaNames: this.rootSchemaNames,
       };
+    }
+  }
+
+  /**
+   * Attempts to generate independent schema groups from the AST.
+   *
+   * This process:
+   * 1. Analyzes dependencies between schemas
+   * 2. Groups connected schemas together
+   * 3. Generates combined, self-contained versions
+   * 4. Calculates metrics and sorts by size
+   *
+   * @param ast - The parsed AST to analyze
+   * @returns Array of schema groups, or undefined if grouping fails
+   */
+  private async generateSchemaGroups(
+    ast: File
+  ): Promise<SchemaGroup[] | undefined> {
+    try {
+      const analyzer = new SchemaDependencyAnalyzer();
+      analyzer.analyzeDependencies(ast);
+
+      const groups = analyzer.getIndependentSchemaGroups();
+      const schemaGroups = groups.map((group) => {
+        const code = analyzer.generateCombinedSchema(group);
+        return {
+          schemaNames: Array.from(group),
+          code,
+          metrics: calculateGroupMetrics(code, group.size),
+        };
+      });
+
+      return sortSchemaGroups(schemaGroups);
+    } catch (error) {
+      this.issueReporter.reportIssue(
+        { type: "File", loc: { start: { line: 1, column: 0 } } } as Node,
+        `Warning: Schema grouping failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+        "File",
+        IssueSeverity.WARNING
+      );
+      return undefined;
     }
   }
 
@@ -278,6 +343,11 @@ export class SchemaValidator {
       if (this.isSchemaDeclaration(declarator)) {
         if (!this.validateSchemaExpression(declarator.init)) {
           isValid = false;
+        } else {
+          // If it's valid, record the name of the variable as a root schema
+          if (declarator.id.type === "Identifier") {
+            this.rootSchemaNames.push(declarator.id.name);
+          }
         }
       }
     }
@@ -402,6 +472,10 @@ interface ValidationResult {
     severity: IssueSeverity;
     suggestion?: string;
   }>;
+  /** Names of recognized root-level schemas */
+  rootSchemaNames: string[];
+  /** Independent schema groups, if grouping was requested */
+  schemaGroups?: SchemaGroup[];
 }
 
 /**

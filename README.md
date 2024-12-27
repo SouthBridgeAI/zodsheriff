@@ -58,22 +58,22 @@ Safely run LLM-generated schemas while keeping their original structure, comment
 
 ```bash
 # Validate a schema file
-npx zodsheriff schema.ts
+bunx zodsheriff schema.ts
 
 # Read from clipboard (great for quick validations)
-npx zodsheriff --clipboard
+bunx zodsheriff --clipboard
 
 # Read from stdin (perfect for piping)
-cat schema.ts | npx zodsheriff --stdin
+cat schema.ts | bunx zodsheriff --stdin
 
 # Use specific security level
-npx zodsheriff schema.ts --config medium
+bunx zodsheriff schema.ts --config medium
 
 # Get cleaned, safe version
-npx zodsheriff schema.ts --clean-only > safe-schema.ts
+bunx zodsheriff schema.ts --clean-only > safe-schema.ts
 
 # Pipe from another command
-your-llm-command | npx zodsheriff --stdin --config extremely-safe > safe-schema.ts
+your-llm-command | bunx zodsheriff --stdin --config extremely-safe > safe-schema.ts
 ```
 
 ## 📦 Installation
