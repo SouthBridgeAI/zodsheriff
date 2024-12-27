@@ -10,7 +10,7 @@ import {
   type VariableDeclarator,
   exportNamedDeclaration,
 } from "@babel/types";
-import type { ValidationConfig } from "./types";
+import type { ValidationConfig, ValidationResult } from "./types";
 import { ResourceManager } from "./resource-manager";
 import { IssueReporter, IssueSeverity } from "./reporting";
 import { ChainValidator } from "./chain-validator";
@@ -18,7 +18,6 @@ import { ArgumentValidator } from "./argument-validator";
 import {
   calculateGroupMetrics,
   SchemaGroup,
-  SchemaGroupingOptions,
   sortSchemaGroups,
 } from "./schema-groups";
 import { SchemaDependencyAnalyzer } from "./schema-dependencies";
@@ -79,10 +78,7 @@ export class SchemaValidator {
    * @param schemaCode - The schema code to validate
    * @returns Promise<ValidationResult> with validation status, cleaned code, and issues
    */
-  public async validateSchema(
-    schemaCode: string,
-    options: SchemaGroupingOptions = { enabled: false }
-  ): Promise<ValidationResult> {
+  public async validateSchema(schemaCode: string): Promise<ValidationResult> {
     this.rootSchemaNames.clear();
     this.resourceManager.reset();
     this.issueReporter.clear();
@@ -186,7 +182,7 @@ export class SchemaValidator {
 
       // Only attempt grouping if validation passed and it was requested
       const schemaGroups =
-        options.enabled && hasValidSchemas && !hasErrors
+        this.config.schemaUnification?.enabled && hasValidSchemas && !hasErrors
           ? await this.generateSchemaGroups(ast)
           : undefined;
 
@@ -470,29 +466,6 @@ export class SchemaValidator {
       IssueSeverity.ERROR
     );
   }
-}
-
-/**
- * Result of schema validation
- */
-interface ValidationResult {
-  /** Whether the schema is valid (no errors found) */
-  isValid: boolean;
-  /** The cleaned and formatted schema code */
-  cleanedCode: string;
-  /** Array of validation issues found */
-  issues: Array<{
-    line: number;
-    column?: number;
-    message: string;
-    nodeType: string;
-    severity: IssueSeverity;
-    suggestion?: string;
-  }>;
-  /** Names of recognized root-level schemas */
-  rootSchemaNames: string[];
-  /** Independent schema groups, if grouping was requested */
-  schemaGroups?: SchemaGroup[];
 }
 
 /**

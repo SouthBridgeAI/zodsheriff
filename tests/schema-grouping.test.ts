@@ -85,9 +85,7 @@ describe("Schema Root Detection and Grouping", () => {
         });
       `;
 
-      const result = await validator.validateSchema(code, { enabled: true });
-
-      console.log("Got results", result);
+      const result = await validator.validateSchema(code);
 
       expect(result.schemaGroups).toBeDefined();
       expect(result.schemaGroups!.length).toBe(2); // Two independent groups
@@ -137,12 +135,7 @@ describe("Schema Root Detection and Grouping", () => {
         });
       `;
 
-      const result = await validator.validateSchema(code, {
-        enabled: true,
-        sortBySize: true,
-      });
-
-      console.log("Got results", result);
+      const result = await validator.validateSchema(code);
 
       expect(result.schemaGroups).toBeDefined();
       expect(result.schemaGroups!.length).toBe(2);
@@ -172,7 +165,7 @@ describe("Schema Root Detection and Grouping", () => {
     });
   `;
 
-      const result = await validator.validateSchema(code, { enabled: true });
+      const result = await validator.validateSchema(code);
       expect(result.isValid).toBe(false);
       expect(result.schemaGroups).toBeUndefined();
     });

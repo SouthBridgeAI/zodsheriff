@@ -1,3 +1,6 @@
+import { IssueSeverity } from "./reporting";
+import { SchemaGroup } from "./schema-groups";
+
 /**
  * Core configuration interface for validation settings
  */
@@ -26,6 +29,12 @@ export interface ValidationConfig {
 
   // Runtime checks
   addRuntimeProtection: boolean;
+
+  schemaUnification?: SchemaUnificationOptions;
+}
+
+export interface SchemaUnificationOptions {
+  enabled: boolean;
 }
 
 /**
@@ -126,7 +135,7 @@ export const relaxedConfig: ValidationConfig = {
 // Helper to combine configs with overrides
 export function createConfig(
   baseConfig: ValidationConfig,
-  overrides?: Partial<ValidationConfig>,
+  overrides?: Partial<ValidationConfig>
 ): ValidationConfig {
   return {
     ...baseConfig,
@@ -163,4 +172,27 @@ export interface ValidationContext {
   config: ValidationConfig;
   parentNodes: Node[];
   depth: number;
+}
+
+/**
+ * Result of schema validation
+ */
+export interface ValidationResult {
+  /** Whether the schema is valid (no errors found) */
+  isValid: boolean;
+  /** The cleaned and formatted schema code */
+  cleanedCode: string;
+  /** Array of validation issues found */
+  issues: Array<{
+    line: number;
+    column?: number;
+    message: string;
+    nodeType: string;
+    severity: IssueSeverity;
+    suggestion?: string;
+  }>;
+  /** Names of recognized root-level schemas */
+  rootSchemaNames: string[];
+  /** Independent schema groups, if grouping was requested */
+  schemaGroups?: SchemaGroup[];
 }

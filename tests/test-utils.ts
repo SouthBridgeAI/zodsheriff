@@ -61,6 +61,7 @@ export function createTestConfig(
     maxNodeCount: 100,
     allowComputedProperties: false, // Explicitly disable computed properties for tests
     ...overrides,
+    schemaUnification: { enabled: true },
   });
 }
 

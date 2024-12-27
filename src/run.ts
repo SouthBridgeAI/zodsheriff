@@ -4,8 +4,16 @@ import { stdin as input } from "node:process";
 import * as readline from "node:readline";
 import clipboardy from "clipboardy";
 import { validateZodSchema } from ".";
-import { extremelySafeConfig, mediumConfig, relaxedConfig } from "./types";
+import {
+  extremelySafeConfig,
+  mediumConfig,
+  relaxedConfig,
+  ValidationResult,
+} from "./types";
 
+/**
+ * CLI options interface including new unified schema functionality
+ */
 interface CliOptions {
   stdin: boolean;
   clipboard: boolean;
@@ -13,8 +21,13 @@ interface CliOptions {
   cleanOnly: boolean;
   json: boolean;
   help: boolean;
+  getUnifiedLargest: boolean; // New option for getting largest unified schema
 }
 
+/**
+ * Reads input from stdin line by line
+ * @returns Promise<string> Combined input lines
+ */
 async function readFromStdin(): Promise<string> {
   const rl = readline.createInterface({ input });
   const lines: string[] = [];
@@ -24,25 +37,36 @@ async function readFromStdin(): Promise<string> {
   return lines.join("\n");
 }
 
+/**
+ * Prints CLI help information including new unified schema option
+ */
 function printHelp(): void {
   console.log(`Usage: zodsheriff [options] [file]
 
 Options:
-  --stdin          Read schema from standard input
-  --clipboard      Read schema from system clipboard
-  --config <level> Set validation config: extremelySafe | medium | relaxed (default: relaxed)
-  --clean-only     Output only the cleaned schema
-  --json          Output result in JSON format
-  --help          Show this help message
+  --stdin             Read schema from standard input
+  --clipboard         Read schema from system clipboard
+  --config <level>    Set validation config: extremelySafe | medium | relaxed (default: relaxed)
+  --clean-only        Output only the cleaned schema
+  --json             Output result in JSON format
+  --getUnifiedLargest Output the largest unified schema to stdout (if available)
+  --help             Show this help message
 
 Examples:
   zodsheriff schema.ts
   zodsheriff --stdin < schema.ts
   zodsheriff --clipboard
   zodsheriff --config medium schema.ts
-  zodsheriff --clean-only schema.ts`);
+  zodsheriff --clean-only schema.ts
+  zodsheriff --getUnifiedLargest schema.ts > unified.ts`);
 }
 
+/**
+ * Reads input from various sources based on CLI options
+ * @param options CLI options object
+ * @param inputFilePath Optional file path for input
+ * @returns Promise<string> Input content
+ */
 async function readInput(
   options: CliOptions,
   inputFilePath?: string
@@ -61,6 +85,23 @@ async function readInput(
   );
 }
 
+/**
+ * Gets the largest unified schema from validation results
+ * @param result Validation result object
+ * @returns string | null The largest unified schema or null if not available
+ */
+function getLargestUnifiedSchema(result: ValidationResult): string | null {
+  if (!result.schemaGroups || result.schemaGroups.length === 0) {
+    return null;
+  }
+
+  // Schema groups are already sorted by size, so return the first one
+  return result.schemaGroups[0].code;
+}
+
+/**
+ * Main CLI execution function
+ */
 async function main() {
   const args = process.argv.slice(2);
   const options: CliOptions = {
@@ -70,6 +111,7 @@ async function main() {
     cleanOnly: false,
     json: false,
     help: false,
+    getUnifiedLargest: false,
   };
 
   let inputFilePath: string | undefined;
@@ -99,6 +141,8 @@ async function main() {
       options.cleanOnly = true;
     } else if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--getUnifiedLargest") {
+      options.getUnifiedLargest = true;
     } else if (!arg.startsWith("--")) {
       inputFilePath = arg;
     }
@@ -112,11 +156,30 @@ async function main() {
       relaxed: relaxedConfig,
     };
 
-    const result = await validateZodSchema(
-      schemaCode,
-      configMap[options.config]
-    );
+    // Enable schema unification if using --getUnifiedLargest
+    const configWithUnification = {
+      ...configMap[options.config],
+      schemaUnification: options.getUnifiedLargest
+        ? { enabled: true }
+        : undefined,
+    };
 
+    const result = await validateZodSchema(schemaCode, configWithUnification);
+
+    // Handle --getUnifiedLargest option
+    if (options.getUnifiedLargest) {
+      const largestSchema = getLargestUnifiedSchema(result);
+      if (largestSchema) {
+        // Output only the schema code to stdout for piping
+        console.log(largestSchema);
+        process.exit(0);
+      } else {
+        console.error("No unified schema available.");
+        process.exit(1);
+      }
+    }
+
+    // Handle other output options
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
       process.exit(result.isValid ? 0 : 1);
@@ -160,6 +223,7 @@ async function main() {
   }
 }
 
+// Error handling wrapper for the main function
 main().catch((err) => {
   console.error("Fatal error:", err instanceof Error ? err.message : err);
   process.exit(1);
