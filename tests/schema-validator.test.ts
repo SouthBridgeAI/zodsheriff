@@ -116,4 +116,25 @@ describe("SchemaValidator", () => {
     expect(result.cleanedCode).toContain("z.object({");
     expect(result.cleanedCode).toContain("name: z.string()");
   });
+
+  it("should preserve schema descriptions and comments", async () => {
+    const code = `
+      import { z } from 'zod';
+
+      // Global user type
+      const userSchema = z.object({
+        /** User's unique identifier */
+        id: z.string().uuid().describe('The user UUID'),
+        // Basic info
+        name: z.string().min(2).describe('User display name'),
+      });
+    `;
+
+    const result = await validator.validateSchema(code);
+    expect(result.isValid).toBe(true);
+    expect(result.cleanedCode).toContain("// Global user type");
+    expect(result.cleanedCode).toContain("/** User's unique identifier */");
+    expect(result.cleanedCode).toContain(".describe('The user UUID')");
+    expect(result.cleanedCode).toContain("// Basic info");
+  });
 });

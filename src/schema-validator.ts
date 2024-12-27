@@ -84,7 +84,7 @@ export class SchemaValidator {
     this.issueReporter.clear();
 
     try {
-      // Parse the code
+      // 1) Parse the raw code
       const ast = await this.parseCode(schemaCode);
       if (!ast) {
         return {
@@ -99,13 +99,13 @@ export class SchemaValidator {
       let hasErrors = false;
       const nodesToRemove = new Set<Node>();
 
-      // First check for required zod import
+      // Check for required zod import (simplified)
       const hasZodImport = this.validateZodImport(ast);
       if (!hasZodImport) {
         hasErrors = true;
       }
 
-      // Traverse and validate the AST
+      // 2) Traverse & remove invalid nodes
       traverse(ast, {
         ImportDeclaration: (path) => {
           if (path.node.source.value !== "zod") {
@@ -127,13 +127,13 @@ export class SchemaValidator {
             nodesToRemove.add(path.node);
             hasErrors = true;
           } else {
-            // Check if this contains any schema declarations
+            // Check if this variable is actually a "schema" (z.* or name includes "schema")
             const hasSchema = path.node.declarations.some((decl) =>
               this.isSchemaDeclaration(decl)
             );
             if (hasSchema) {
               hasValidSchemas = true;
-              // If it's valid and not already exported, wrap it in an export
+              // Auto-export if not already
               if (
                 !path.parent ||
                 path.parent.type !== "ExportNamedDeclaration"
@@ -142,6 +142,7 @@ export class SchemaValidator {
                 path.replaceWith(exportDecl);
               }
             } else {
+              // Not a schema => remove
               nodesToRemove.add(path.node);
             }
           }
@@ -161,30 +162,35 @@ export class SchemaValidator {
         },
       });
 
-      // Remove invalid nodes
+      // Actually remove the invalid nodes
       traverse(ast, {
-        enter(path) {
+        enter: (path) => {
           if (nodesToRemove.has(path.node)) {
             path.remove();
           }
         },
       });
 
-      // Generate cleaned code if we found any valid schemas
+      // 3) Generate cleaned code if we have any valid schemas
       let cleanedCode = "";
       if (hasValidSchemas) {
-        const generated = generate(ast, {
-          comments: true,
-          compact: false,
-        });
+        const generated = generate(ast, { comments: true, compact: false });
         cleanedCode = generated.code;
       }
 
-      // Only attempt grouping if validation passed and it was requested
-      const schemaGroups =
-        this.config.schemaUnification?.enabled && hasValidSchemas && !hasErrors
-          ? await this.generateSchemaGroups(ast)
-          : undefined;
+      // 4) If unification is enabled, parse the *cleaned* code & unify
+      let schemaGroups: SchemaGroup[] | undefined;
+      if (
+        hasValidSchemas &&
+        !hasErrors &&
+        this.config.schemaUnification?.enabled
+      ) {
+        // Re-parse the cleaned code
+        const cleanedAst = await this.parseCode(cleanedCode);
+        if (cleanedAst) {
+          schemaGroups = await this.generateSchemaGroups(cleanedAst);
+        }
+      }
 
       return {
         isValid: !hasErrors,
@@ -220,30 +226,21 @@ export class SchemaValidator {
     ast: File
   ): Promise<SchemaGroup[] | undefined> {
     try {
-      const analyzer = new SchemaDependencyAnalyzer();
+      const analyzer = new SchemaDependencyAnalyzer(
+        // pass config if you need it for the unwrapping
+        this.config
+      );
       analyzer.analyzeDependencies(ast);
 
       const groups = analyzer.getIndependentSchemaGroups();
       const schemaGroups = groups.map((group) => {
-        // Find the root schema name using the same logic
-        const rootSchema =
-          Array.from(group).find((name) => {
-            const deps = analyzer.getDependencies(name)!.dependencies;
-            const refs = analyzer.getReferenceMap().get(name) || new Set();
-            return deps.size > 0 && refs.size === 0;
-          }) || Array.from(group)[0];
-
-        // Reorder group to put root schema first
-        const orderedNames = [rootSchema];
-        group.forEach((name) => {
-          if (name !== rootSchema) {
-            orderedNames.push(name);
-          }
-        });
-
+        // We'll keep the same logic for picking a root & generating combined code
         const code = analyzer.generateCombinedSchema(group);
+
+        // Let's build the array of schema names in a stable order
+        const groupNames = Array.from(group);
         return {
-          schemaNames: orderedNames,
+          schemaNames: groupNames,
           code,
           metrics: calculateGroupMetrics(code, group.size),
         };

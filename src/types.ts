@@ -35,6 +35,11 @@ export interface ValidationConfig {
 
 export interface SchemaUnificationOptions {
   enabled: boolean;
+  /**
+   * If true, and if the *very root* of a grouped schema is an array literal,
+   * we unwrap it (remove the array) before finalizing.
+   */
+  unwrapArrayRoot?: boolean;
 }
 
 /**
@@ -130,6 +135,10 @@ export const relaxedConfig: ValidationConfig = {
     ]),
   },
   addRuntimeProtection: false, // Trust the code more in relaxed mode
+  schemaUnification: {
+    enabled: true,
+    unwrapArrayRoot: true,
+  },
 };
 
 // Helper to combine configs with overrides

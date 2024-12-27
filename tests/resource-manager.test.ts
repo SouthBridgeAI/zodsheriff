@@ -59,3 +59,50 @@ describe("ResourceManager", () => {
     expect(stats.executionTime).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("ResourceManager - Edge Cases", () => {
+  it("should handle rapid consecutive node increments", () => {
+    const manager = new ResourceManager(
+      createTestConfig({
+        maxNodeCount: 2000, // Increase the limit to allow our test
+      })
+    );
+    const incrementCount = 1000;
+
+    const start = Date.now();
+    for (let i = 0; i < incrementCount; i++) {
+      manager.incrementNodeCount();
+    }
+    const duration = Date.now() - start;
+
+    const stats = manager.getStats();
+    expect(stats.nodeCount).toBe(incrementCount);
+    expect(duration).toBeLessThan(1000); // Should complete within 1 second
+  });
+
+  it("should throw when rapidly exceeding node count limit", () => {
+    const maxNodes = 100;
+    const manager = new ResourceManager(
+      createTestConfig({
+        maxNodeCount: maxNodes,
+      })
+    );
+
+    expect(() => {
+      for (let i = 0; i <= maxNodes + 1; i++) {
+        manager.incrementNodeCount();
+      }
+    }).toThrow(ValidationError);
+  });
+
+  it("should track multiple depth types independently", () => {
+    const manager = new ResourceManager(createTestConfig());
+
+    manager.trackDepth(3, "object");
+    manager.trackDepth(5, "chain");
+    manager.trackDepth(2, "argument");
+
+    const stats = manager.getStats();
+    expect(stats.maxDepthReached).toBe(5);
+  });
+});

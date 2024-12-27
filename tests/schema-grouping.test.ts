@@ -1,7 +1,87 @@
 // tests/schema-grouping.test.ts
 
 import { SchemaValidator } from "../src/schema-validator";
+import { ValidationResult } from "../src/types";
 import { createTestConfig } from "./test-utils";
+
+describe("Schema Unification and Unwrapping z.array(...) at top-level", () => {
+  it("should unwrap z.array(z.object(...)) if config.unwrapArrayRoot = true", async () => {
+    // 1) We enable unification + array-root unwrapping in the config:
+    const config = createTestConfig({
+      schemaUnification: {
+        enabled: true,
+        // This new boolean signals we want to remove top-level z.array calls
+        unwrapArrayRoot: true,
+      },
+    });
+
+    const validator = new SchemaValidator(config);
+
+    // 2) This code has a single schema that is basically `z.array(...)` at the top-level.
+    const code = `
+      import { z } from 'zod';
+
+      // Because it has "schema" in the name, it is recognized as a 'root schema' variable
+      const arrayRootSchema = z.array(
+        z.object({
+          name: z.string(),
+        })
+      );
+    `;
+
+    // 3) Validate
+    const result: ValidationResult = await validator.validateSchema(code);
+
+    // We expect that the validator sees no errors
+    expect(result.isValid).toBe(true);
+
+    // 4) We expect at least one schema group
+    expect(result.schemaGroups).toBeDefined();
+    const groups = result.schemaGroups!;
+    expect(groups.length).toBeGreaterThan(0);
+
+    // 5) Find our group that contains "arrayRootSchema"
+    const arrGroup = groups.find((g) =>
+      g.schemaNames.includes("arrayRootSchema")
+    );
+    expect(arrGroup).toBeDefined();
+
+    // 6) Confirm the final code "unwraps" z.array(...) => z.object(...)
+    //    So it should not have "z.array(" at the top-level:
+    const finalCode = arrGroup!.code;
+    expect(finalCode).toContain("z.object({");
+    expect(finalCode).not.toContain("z.array(");
+  });
+
+  it("should preserve z.array(...) if unwrapArrayRoot = false", async () => {
+    const config = createTestConfig({
+      schemaUnification: {
+        enabled: true,
+        unwrapArrayRoot: false, // do NOT remove top-level z.array
+      },
+    });
+    const validator = new SchemaValidator(config);
+
+    const code = `
+      import { z } from 'zod';
+
+      const arrayRootSchema = z.array(z.object({ x: z.number() }));
+    `;
+
+    const result = await validator.validateSchema(code);
+    expect(result.isValid).toBe(true);
+
+    expect(result.schemaGroups).toBeDefined();
+    const arrGroup = result.schemaGroups!.find((g) =>
+      g.schemaNames.includes("arrayRootSchema")
+    );
+    expect(arrGroup).toBeDefined();
+
+    const finalCode = arrGroup!.code;
+    // Now we expect the top-level 'z.array(...)' call to remain intact.
+    expect(finalCode).toContain("z.array(");
+  });
+});
 
 describe("Schema Root Detection and Grouping", () => {
   let validator: SchemaValidator;
@@ -169,5 +249,57 @@ describe("Schema Root Detection and Grouping", () => {
       expect(result.isValid).toBe(false);
       expect(result.schemaGroups).toBeUndefined();
     });
+  });
+
+  it("should handle nested z.array(...) calls correctly", async () => {
+    const config = createTestConfig({
+      schemaUnification: {
+        enabled: true,
+        unwrapArrayRoot: true,
+      },
+    });
+    const validator = new SchemaValidator(config);
+
+    const code = `
+      import { z } from 'zod';
+      const arrayRootSchema = z.array(z.array(z.string()));
+    `;
+
+    const result = await validator.validateSchema(code);
+    expect(result.isValid).toBe(true);
+
+    const group = result.schemaGroups!.find((g) =>
+      g.schemaNames.includes("arrayRootSchema")
+    );
+    expect(group).toBeDefined();
+
+    // Should only unwrap the outermost z.array
+    expect(group!.code).toContain("z.array(z.string())");
+    expect(group!.code.match(/z\.array/g)?.length).toBe(1);
+  });
+
+  it("should handle unwrapping when schema is not actually an array", async () => {
+    const config = createTestConfig({
+      schemaUnification: {
+        enabled: true,
+        unwrapArrayRoot: true,
+      },
+    });
+    const validator = new SchemaValidator(config);
+
+    const code = `
+      import { z } from 'zod';
+      const nonArraySchema = z.object({ field: z.string() });
+    `;
+
+    const result = await validator.validateSchema(code);
+    expect(result.isValid).toBe(true);
+
+    const group = result.schemaGroups!.find((g) =>
+      g.schemaNames.includes("nonArraySchema")
+    );
+    expect(group).toBeDefined();
+    // Should be unchanged since it's not an array
+    expect(group!.code).toContain("z.object({");
   });
 });

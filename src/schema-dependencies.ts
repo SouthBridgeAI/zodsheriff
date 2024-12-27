@@ -1,8 +1,11 @@
 // schema-dependencies.ts
 
-import { Node, VariableDeclarator, Identifier } from "@babel/types";
+import { parse } from "@babel/parser";
+import { Node, VariableDeclarator, Expression } from "@babel/types";
 import _traverse from "@babel/traverse";
 import _generate from "@babel/generator";
+import { ValidationConfig } from "./types";
+import { IssueReporter, IssueSeverity } from "./reporting";
 
 // Handle ESM default export
 const traverse = (_traverse as any).default || _traverse;
@@ -29,6 +32,14 @@ export class SchemaDependencyAnalyzer {
   private dependencies: Map<string, SchemaDependencyInfo> = new Map();
   /** Reverse mapping of dependencies (what schemas reference this one) */
   private referenceMap: Map<string, Set<string>> = new Map();
+  private readonly issueReporter: IssueReporter;
+
+  constructor(
+    private readonly config?: ValidationConfig,
+    issueReporter?: IssueReporter
+  ) {
+    this.issueReporter = issueReporter ?? new IssueReporter();
+  }
 
   /**
    * Analyzes the AST to find all schema dependencies.
@@ -247,6 +258,69 @@ export class SchemaDependencyAnalyzer {
     const inlinedSchema = replaceSchemaReferences(rootNode.init);
 
     // Generate code from the transformed AST
-    return generate(inlinedSchema).code;
+    let code = generate(inlinedSchema).code;
+
+    if (this.config?.schemaUnification?.unwrapArrayRoot) {
+      try {
+        const topAst = parse(code, {
+          sourceType: "module",
+          plugins: ["typescript"],
+        });
+
+        // Check if we have a single expression that is z.array(...)
+        if (
+          topAst.program.body.length === 1 &&
+          topAst.program.body[0].type === "ExpressionStatement" &&
+          topAst.program.body[0].expression.type === "CallExpression"
+        ) {
+          const expr = topAst.program.body[0].expression;
+          const callee = expr.callee;
+
+          // Check if it's z.array
+          if (
+            callee.type === "MemberExpression" &&
+            callee.object.type === "Identifier" &&
+            callee.object.name === "z" &&
+            callee.property.type === "Identifier" &&
+            callee.property.name === "array" &&
+            expr.arguments.length === 1 &&
+            // Check that the argument is an Expression
+            !(
+              "type" in expr.arguments[0] &&
+              expr.arguments[0].type === "SpreadElement"
+            )
+          ) {
+            // Safely assert the argument as Expression
+            const innerSchema = expr.arguments[0] as Expression;
+
+            // Replace z.array(schema) with just schema
+            topAst.program.body[0] = {
+              type: "ExpressionStatement",
+              expression: innerSchema,
+              loc: expr.loc, // Preserve location info for error reporting
+            };
+
+            // Re-generate code
+            code = generate(topAst).code;
+          }
+        }
+      } catch (err) {
+        // Use the issue reporter to log errors
+        this.issueReporter.reportIssue(
+          {
+            type: "File",
+            loc: { start: { line: 1, column: 0 } },
+          } as Node,
+          `Failed to unwrap array root schema: ${
+            err instanceof Error ? err.message : "Unknown error"
+          }`,
+          "File",
+          IssueSeverity.WARNING,
+          "The array unwrapping operation failed but the schema is still valid"
+        );
+      }
+    }
+
+    return code;
   }
 }
